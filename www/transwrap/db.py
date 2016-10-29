@@ -36,7 +36,7 @@ class _DbCtx(threading.local):
     def cursor(self):
         return self.connection.cursor()
 
-_db_ctx = _DbCtx
+_db_ctx = _DbCtx()
 
 
 class _LasyConnection(object):
@@ -120,7 +120,17 @@ class _TransactionCtx(object):
             logging.warning('commit failed. try rollback...')
             _db_ctx.connection.rollback()
             logging.warning('rollback ok.')
+            raise
 
+    def rollback(self):
+        global _db_ctx
+        logging.warning('rollback transaction...')
+        _db_ctx.connection.rollback()
+        logging.info('rollback ok.')
+
+
+if __name__ == '__main__':  # 判断是否直接运行该文件
+    logging.basicConfig(level=logging.DEBUG)
 
 
 
