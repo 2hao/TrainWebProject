@@ -20,16 +20,16 @@ engine = None
 class _DbCtx(threading.local):
     def __init__(self):
         self.connection = None
-        self.transaction = 0
+        self.transactions = 0
 
     def is_init(self):
         return self.connection is not None
 
     def init(self):
         self.connection = _LasyConnection()
-        self.transaction = 0
+        self.transactions = 0
 
-    def clearup(self):
+    def cleanup(self):
         self.connection.cleanup()
         self.connection = None
 
@@ -68,6 +68,59 @@ class _LasyConnection(object):
 class _ConnectionCtx(object):
     def __enter__(self):
         global _db_ctx
+        self.should_cleanup = False
+        if not _db_ctx.is_init():
+            _db_ctx.init()
+            self.should_close_conn = True
+        _db_ctx.transactions += 1
+        logging.info('begin transaction...' if _db_ctx.transactions == 1 else 'join current transaction...')
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        global _db_ctx
+        if self.should_cleanup:
+            _db_ctx.cleanup()
+
+
+def connection():
+    return _ConnectionCtx()
+
+
+class _TransactionCtx(object):
+    def __enter__(self):
+        global _db_ctx
+        self .should_close_conn = False
+        if not _db_ctx.is_init():
+            _db_ctx.init()
+            self.should_close_conn = True
+        _db_ctx.transactions += 1
+        logging.info('begin transaction...' if _db_ctx.transactions == 1 else 'join current transaction...')
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        global _db_ctx
+        _db_ctx.transactions -= 1
+        try:
+            if _db_ctx.transactions == 0:
+                if exc_type is None:
+                    self.commit()
+                else:
+                    self.rollback()
+        finally:
+            if self.should_close_conn:
+                _db_ctx.cleanup()
+
+    def commit(self):
+        global _db_ctx
+        logging.info('commit transaction...')
+        try:
+            _db_ctx.connection.commit()
+            logging.info('commit ok.')
+        except:
+            logging.warning('commit failed. try rollback...')
+            _db_ctx.connection.rollback()
+            logging.warning('rollback ok.')
+
 
 
 
